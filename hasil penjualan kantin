@@ -1,0 +1,253 @@
+<!doctype html>
+
+<html lang="id">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Laporan Penjualan Kantin</title>
+  <style>
+    :root{--bg:#f7f8fb;--card:#ffffff;--muted:#6b7280;--accent:#0ea5a3}
+    *{box-sizing:border-box}
+    body{font-family:Inter,ui-sans-serif,system-ui,Segoe UI,Roboto,"Helvetica Neue",Arial; margin:0; background:var(--bg); color:#111}
+    .container{max-width:980px;margin:30px auto;padding:22px}
+    header{display:flex;align-items:center;justify-content:space-between;margin-bottom:18px}
+    h1{font-size:20px;margin:0}
+    .card{background:var(--card);border-radius:12px;padding:16px;box-shadow:0 6px 18px rgba(15,23,42,0.06);}
+    form{display:grid;grid-template-columns:1fr 100px 120px 120px 80px;gap:10px;align-items:end}
+    label{font-size:12px;color:var(--muted)}
+    input,select{width:100%;padding:8px;border:1px solid #e6e9ef;border-radius:8px}
+    button{padding:9px 12px;border-radius:10px;border:0;background:var(--accent);color:#fff;cursor:pointer}
+    table{width:100%;border-collapse:collapse;margin-top:12px}
+    th,td{padding:10px;border-bottom:1px solid #eef2f7;text-align:left}
+    th{font-size:13px;color:var(--muted)}
+    tfoot td{font-weight:600}
+    .actions button{margin-right:6px;background:#ef4444}
+    .tools{display:flex;gap:8px}
+    .small{font-size:13px;padding:6px 8px}
+    @media(max-width:720px){form{grid-template-columns:1fr} .tools{flex-wrap:wrap}}
+  </style>
+</head>
+<body>
+  <div class="container">
+    <header>
+      <h1>📊 Laporan Penjualan Kantin</h1>
+      <div class="tools">
+        <button id="exportCsv" class="small">Export CSV</button>
+        <button id="printBtn" class="small">Print</button>
+        <button id="clearStorage" class="small">Reset Data</button>
+      </div>
+    </header><div class="card">
+  <form id="saleForm">
+    <div>
+      <label for="item">Nama Barang</label>
+      <input id="item" required placeholder="Contoh: Siomay" />
+    </div>
+
+    <div>
+      <label for="qty">Jumlah</label>
+      <input id="qty" type="number" min="1" value="1" required />
+    </div>
+
+    <div>
+      <label for="price">Harga (Rp)</label>
+      <input id="price" type="number" min="0" value="5000" required />
+    </div>
+
+    <div>
+      <label for="date">Tanggal</label>
+      <input id="date" type="date" required />
+    </div>
+
+    <div>
+      <button id="addBtn" type="submit">Tambah</button>
+    </div>
+  </form>
+
+  <div style="margin-top:14px;display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+    <label style="margin:0;font-size:13px;color:var(--muted)">Cari:</label>
+    <input id="search" placeholder="Nama barang atau tanggal (YYYY-MM-DD)" style="flex:1;max-width:420px;padding:8px;border-radius:8px;border:1px solid #e6e9ef" />
+    <select id="filterDateRange" style="padding:8px;border-radius:8px;border:1px solid #e6e9ef">
+      <option value="all">Semua tanggal</option>
+      <option value="today">Hari ini</option>
+      <option value="thisMonth">Bulan ini</option>
+    </select>
+  </div>
+
+  <table id="salesTable" aria-describedby="total">
+    <thead>
+      <tr>
+        <th>No</th>
+        <th>Nama Barang</th>
+        <th>Jumlah</th>
+        <th>Harga (Rp)</th>
+        <th>Subtotal (Rp)</th>
+        <th>Tanggal</th>
+        <th>Aksi</th>
+      </tr>
+    </thead>
+    <tbody></tbody>
+    <tfoot>
+      <tr>
+        <td colspan="4">Total</td>
+        <td id="grandTotal">Rp 0</td>
+        <td colspan="2" id="totalCount">0 item</td>
+      </tr>
+    </tfoot>
+  </table>
+
+</div>
+
+  </div>  <script>
+    // Simple sales manager using localStorage
+    const KEY = 'kantin_sales_v1';
+    const form = document.getElementById('saleForm');
+    const itemInput = document.getElementById('item');
+    const qtyInput = document.getElementById('qty');
+    const priceInput = document.getElementById('price');
+    const dateInput = document.getElementById('date');
+    const tbody = document.querySelector('#salesTable tbody');
+    const grandTotal = document.getElementById('grandTotal');
+    const totalCount = document.getElementById('totalCount');
+    const search = document.getElementById('search');
+    const filterDateRange = document.getElementById('filterDateRange');
+
+    // Init date default to today
+    dateInput.valueAsDate = new Date();
+
+    function load(){
+      const raw = localStorage.getItem(KEY);
+      return raw ? JSON.parse(raw) : [];
+    }
+    function save(data){
+      localStorage.setItem(KEY, JSON.stringify(data));
+    }
+
+    function formatRupiah(n){
+      return 'Rp ' + Number(n).toLocaleString('id-ID');
+    }
+
+    function render(){
+      const rows = load();
+      const q = search.value.trim().toLowerCase();
+      const filter = filterDateRange.value;
+      const today = new Date();
+
+      let filtered = rows.filter(r => {
+        if(q){
+          if(!(r.item.toLowerCase().includes(q) || r.date.includes(q))) return false;
+        }
+        if(filter==='today'){
+          const d = new Date(r.date); return d.toDateString() === today.toDateString();
+        }
+        if(filter==='thisMonth'){
+          const d = new Date(r.date); return d.getMonth()===today.getMonth() && d.getFullYear()===today.getFullYear();
+        }
+        return true;
+      });
+
+      tbody.innerHTML = '';
+      let total = 0;
+      filtered.forEach((r, i)=>{
+        const tr = document.createElement('tr');
+        const subtotal = r.qty * r.price;
+        total += subtotal;
+        tr.innerHTML = `
+          <td>${i+1}</td>
+          <td>${escapeHtml(r.item)}</td>
+          <td>${r.qty}</td>
+          <td>${formatRupiah(r.price)}</td>
+          <td>${formatRupiah(subtotal)}</td>
+          <td>${r.date}</td>
+          <td class="actions">
+            <button onclick="editItem(${r.id})" title="Edit">✏️</button>
+            <button onclick="deleteItem(${r.id})" title="Hapus" style="background:#ef4444;color:white;padding:6px;border-radius:8px;border:0;">🗑️</button>
+          </td>`;
+        tbody.appendChild(tr);
+      });
+
+      grandTotal.textContent = formatRupiah(total);
+      totalCount.textContent = `${filtered.length} item`;
+    }
+
+    function escapeHtml(text){
+      return text.replace(/[&<>"']/g, function(m){return ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;','\'":"'"})[m]});
+    }
+
+    // Add or update
+    form.addEventListener('submit', (e)=>{
+      e.preventDefault();
+      const rows = load();
+      const newItem = {
+        id: Date.now(),
+        item: itemInput.value.trim(),
+        qty: Number(qtyInput.value),
+        price: Number(priceInput.value),
+        date: dateInput.value
+      };
+      rows.push(newItem);
+      save(rows);
+      form.reset();
+      dateInput.valueAsDate = new Date();
+      render();
+    });
+
+    window.editItem = function(id){
+      const rows = load();
+      const idx = rows.findIndex(r=>r.id===id);
+      if(idx===-1) return alert('Data tidak ditemukan');
+      const r = rows[idx];
+      // Populate form with existing data and remove the old entry; user re-submit to save edit
+      itemInput.value = r.item;
+      qtyInput.value = r.qty;
+      priceInput.value = r.price;
+      dateInput.value = r.date;
+      // remove old
+      rows.splice(idx,1);
+      save(rows);
+      render();
+    }
+
+    window.deleteItem = function(id){
+      if(!confirm('Hapus data penjualan ini?')) return;
+      const rows = load().filter(r=>r.id!==id);
+      save(rows);
+      render();
+    }
+
+    search.addEventListener('input', render);
+    filterDateRange.addEventListener('change', render);
+
+    // Export CSV
+    document.getElementById('exportCsv').addEventListener('click', ()=>{
+      const rows = load();
+      if(rows.length===0) return alert('Tidak ada data untuk diexport');
+      const header = ['id','nama_barang','jumlah','harga','tanggal','subtotal'];
+      const lines = [header.join(',')];
+      rows.forEach(r=>{
+        const subtotal = r.qty * r.price;
+        const line = [r.id, '"'+r.item.replace(/"/g,'""')+'"', r.qty, r.price, r.date, subtotal];
+        lines.push(line.join(','));
+      });
+      const csv = lines.join('\n');
+      const blob = new Blob([csv], {type: 'text/csv'});
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a'); a.href=url; a.download = 'penjualan_kantin.csv'; a.click(); URL.revokeObjectURL(url);
+    });
+
+    // Print
+    document.getElementById('printBtn').addEventListener('click', ()=>{
+      window.print();
+    });
+
+    // Reset data
+    document.getElementById('clearStorage').addEventListener('click', ()=>{
+      if(confirm('Reset semua data penjualan (tidak bisa dikembalikan)?')){
+        localStorage.removeItem(KEY);
+        render();
+      }
+    });
+
+    // initial render
+    render();
+  </script></body>
+</html>
